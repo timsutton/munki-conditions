@@ -12,7 +12,7 @@ if [ -e "$CPP_IDENTITY_FILE" ]; then
 		exit 1
 	fi
 	COND_DOMAIN="$MUNKI_DIR/ConditionalItems"
-    GUID=$(/usr/bin/awk -F= '/guid/ {print $2}' "$CPP_IDENTITY_FILE")
+	GUID=$(/usr/bin/awk -F= '/guid/ {print $2}' "$CPP_IDENTITY_FILE")
 
-    "$DEFAULTS" write "$COND_DOMAIN" crashplan_computer_guid -string "$GUID"
+	"$DEFAULTS" write "$COND_DOMAIN" crashplan_computer_guid -string "$GUID"
 fi
