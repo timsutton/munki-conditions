@@ -1,0 +1,9 @@
+#!/bin/sh
+
+DEFAULTS=/usr/bin/defaults
+MUNKI_DIR=$($DEFAULTS read /Library/Preferences/ManagedInstalls ManagedInstallDir)
+COND_DOMAIN="$MUNKI_DIR/ConditionalItems"
+BOARD_ID=$(ioreg -lp IOService | awk '/board-id/ {gsub(/[\"\<\>]/,""); print $4}')
+HARDWARE_UUID=$(/usr/sbin/system_profiler SPHardwareDataType | awk '/Hardware UUID/ {print $3}')
+$DEFAULTS write "$COND_DOMAIN" machine_board_id -string "$BOARD_ID"
+$DEFAULTS write "$COND_DOMAIN" machine_hardware_uuid -string "$HARDWARE_UUID"

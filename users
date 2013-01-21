@@ -1,0 +1,9 @@
+#!/bin/sh
+DEFAULTS=/usr/bin/defaults
+MUNKI_DIR=$($DEFAULTS read /Library/Preferences/ManagedInstalls ManagedInstallDir)
+COND_DOMAIN="$MUNKI_DIR/ConditionalItems"
+AC_RESULT=$(ac -p | awk '!/total/' | sort -rnk 2 | head -n 1)
+MOST_USER=$(echo "$AC_RESULT" | awk '{print $1}')
+MOST_HOURS=$(echo "$AC_RESULT" | awk '{print $2}')
+$DEFAULTS write "$COND_DOMAIN" user_most_active_name -string "$MOST_USER"
+$DEFAULTS write "$COND_DOMAIN" user_most_active_hours -float "$MOST_HOURS"
