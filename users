@@ -1,9 +1,20 @@
 #!/bin/sh
+
+# custom user-related conditions:
+# user_most_active_name: string: name with the longest login time according to ac
+# user_most_active_hours: float: hours this user has been logged in
+# user_local_list: array of strings: list of local users on machine, including all the service users
+
 DEFAULTS=/usr/bin/defaults
 MUNKI_DIR=$($DEFAULTS read /Library/Preferences/ManagedInstalls ManagedInstallDir)
 COND_DOMAIN="$MUNKI_DIR/ConditionalItems"
 AC_RESULT=$(ac -p | awk '!/total/' | sort -rnk 2 | head -n 1)
 MOST_USER=$(echo "$AC_RESULT" | awk '{print $1}')
 MOST_HOURS=$(echo "$AC_RESULT" | awk '{print $2}')
+LOCAL_USERS=$(/usr/bin/dscl . -list /Users)
+
 $DEFAULTS write "$COND_DOMAIN" user_most_active_name -string "$MOST_USER"
 $DEFAULTS write "$COND_DOMAIN" user_most_active_hours -float "$MOST_HOURS"
+for USER_SHORTNAME in $LOCAL_USERS; do
+    $DEFAULTS write "$COND_DOMAIN" user_local_list -array-add "$USER_SHORTNAME"
+done
