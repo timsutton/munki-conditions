@@ -1,4 +1,14 @@
 #!/bin/sh
+#
+# supported_major_os_upgrades: an array of OS X major versions that this
+# machine can run, which can be used to determine if an OS X upgrade package
+# could be offered to the client
+#
+# example condition string for offering a 10.8 upgrade to a client via
+# a manifest's conditional_items:
+#
+# ('10.8' IN supported_major_os_upgrades) AND (os_vers_minor < 8)
+
 
 CONDITION_NAME=supported_major_os_upgrades
 DEFAULTS=/usr/bin/defaults
