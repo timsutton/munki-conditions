@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# writes a condition: 'virtual', which can be:
+#   - 'physical' if a physical machine
+#   - 'vmware' if a VMware VM
+#
+# Designed to be analogous to the 'virtual' Facter fact. No
+# other virtualization platforms are supported currently.
+
+DEFAULTS=/usr/bin/defaults
+MUNKI_DIR=$("${DEFAULTS}" read /Library/Preferences/ManagedInstalls ManagedInstallDir)
+COND_DOMAIN="${MUNKI_DIR}/ConditionalItems"
+KEY="virtual"
+
+VALUE="physical"
+if system_profiler SPHardwareDataType | grep Boot\ ROM | grep VMW; then
+    VALUE="vmware"
+fi
+
+"${DEFAULTS}" write "${COND_DOMAIN}" "${KEY}" "${VALUE}"
