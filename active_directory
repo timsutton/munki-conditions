@@ -1,0 +1,175 @@
+#!/usr/bin/python
+
+# Active Directory conditional script, proof-of-concept version written and
+# shared by Per Olofsson in 2012.
+#
+# Provides the following conditions:
+# - ad_computer_name
+# - ad_computer_ou
+# - ad_computer_ou_path
+# - ad_domain
+# - ad_forest
+#
+# Tim may have modified this slightly but he can't remember.
+
+import sys
+import os
+import plistlib
+import subprocess
+import re
+from SystemConfiguration import *
+from Foundation import CFPreferencesCopyAppValue
+sys.path.insert(0, '/usr/local/munki/munkilib')
+import munkicommon
+
+
+class DSCLError(Exception):
+    """Exception class for dscl."""
+    pass
+    
+
+def dscl(node, command, *args):
+    """Execute dscl command on specified node.
+    
+        dscl("localhost", "search", "/Local/Default/Users", "UniqueID", "501")
+    
+    stdout is returned, and DSCLError is raised if dscl fails or can't execute.
+    """
+    
+    dscl_args = ["/usr/bin/dscl",
+                 node,
+                 "-" + command]
+    dscl_args.extend(args)
+    
+    try:
+        p = subprocess.Popen(dscl_args,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        (out, err) = p.communicate()
+    except OSError as e:
+        raise DSCLError("Couldn't execute dscl: %s" % e.strerror)
+    
+    if p.returncode != 0:
+        raise DSCLError("dscl failed with returncode %d" % p.returncode)
+    
+    return out
+
+
+def parse_dn(dn_str):
+    dn_components = [x.strip().split("=") for x in dn_str.split(",")]
+    # Ditch first component.
+    dn_components.pop(0)
+    dc = list()
+    ou = list()
+    while dn_components[-1][0] == "DC":
+        dc.append(dn_components.pop()[1])
+    for t, val in dn_components:
+        ou.append(val)
+    return ou[-1], "%s\\%s" % (".".join(reversed(dc)).upper(), "\\".join(ou))
+
+
+def main(argv):
+
+    # Don't bother running on Leopard
+    os_vers = munkicommon.getOsVersion()
+    if os_vers == '10.5':
+        print >>sys.stderr, "Machine is running Leopard, unsupported. Exiting.."
+        return 0
+
+    ad_info = dict()
+    
+    # Check if machine is bound do AD, and read name of AD domain node.
+    try:
+        domain_node = dscl("localhost", "list", "/Active Directory").strip()
+    except DSCLError as e:
+        print >>sys.stderr, e
+        return 1
+    
+    if not domain_node:
+        print >>sys.stderr, "Machine does not appear to be bound to Active Directory"
+        return 0
+    
+    print "domain_node: %s" % domain_node
+    
+    # Use dsconfigad -show to find AD computer name.
+    try:
+        p = subprocess.Popen(["/usr/sbin/dsconfigad",
+                              "-show"],
+                              stdout=subprocess.PIPE)
+        (adconfig, err) = p.communicate()
+    except OSError as e:
+        print >>sys.stderr, "Couldn't execute dsconfigad: %s" % e.strerror
+        return 1
+    
+    re_ad_info = re.compile(r'^\s*(?P<key>.+?)\s*=\s*(?P<value>.+?)$')
+    for line in adconfig.splitlines():
+        m = re_ad_info.search(line)
+        if not m:
+            continue
+        key = m.group("key")
+        value = m.group("value")
+        if key == "Active Directory Forest":
+            ad_info["ad_forest"] = value
+        elif key == "Active Directory Domain":
+            ad_info["ad_domain"] = value
+        elif key == "Computer Account":
+            ad_info["ad_computer_name"] = value
+    
+    for key, error in (("ad_computer_name", "Couldn't determine AD computer name"),
+                       ("ad_forest", "Couldn't determine AD forest"),
+                       ("ad_domain", "Couldn't determine AD domain")):
+        if not key in ad_info:
+            print >>sys.stderr, error
+            return 1
+    
+    # Find computer's OU.
+    try:
+        dn = dscl("/Active Directory/%s/All Domains" % domain_node,
+                  "read",
+                  "/Computers/%s" % ad_info["ad_computer_name"],
+                  "dsAttrTypeNative:distinguishedName").split(":")[2].strip()
+    except DSCLError as e:
+        print >>sys.stderr, e
+        return 1
+    
+    ad_ou, ad_ou_path = parse_dn(dn)
+    ad_info["ad_computer_ou"] = ad_ou
+    ad_info["ad_computer_ou_path"] = ad_ou_path
+    
+    for key, value in sorted(ad_info.items()):
+        print "%s: %s" % (key, value)
+    
+    # Save to ConditionalItems.plist.
+    managedinstall_dir = CFPreferencesCopyAppValue("ManagedInstallDir", "ManagedInstalls")
+    if managedinstall_dir is None:
+        print >>sys.stderr, "ManagedInstallDir is not set"
+        return 1
+    
+    conditionalitems_path = os.path.join(managedinstall_dir, "ConditionalItems.plist")
+    
+    if os.path.exists(conditionalitems_path):
+        try:
+            output_dict = plistlib.readPlist(conditionalitems_path)
+        except BaseException as e:
+            # Abort on any error to avoid clobbering plist.
+            print >>sys.stderr, "Couldn't read %s: %s" % (conditionalitems_path, e)
+            return 1
+    else:
+        output_dict = dict()
+    
+    output_dict.update(ad_info)
+    try:
+        plistlib.writePlist(output_dict, conditionalitems_path)
+    except IOError as e:
+        print >>sys.stderr, "Couldn't write to %s: %s" % (
+            conditionalitems_path,
+            e.strerror,
+        )
+        return 1
+    
+    return 0
+    
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
+    
